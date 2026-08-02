@@ -139,7 +139,7 @@ Automation Engine
 -   Python
 -   PyQt6
 -   OpenRouter / LLMs
--   YOLOv8
+-   YOLOv11n
 -   OCR
 -   Playwright
 -   Sentence Transformers

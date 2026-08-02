@@ -1,21 +1,49 @@
-
 class IntentClassifier:
 
     def __init__(
-    self,
-    brain_manager,
-    command_processor=None,
-    available_skills=None,
-):
+        self,
+        brain_manager,
+        command_processor=None,
+        available_skills=None,
+    ):
 
         self.brain = brain_manager
         self.command_processor = command_processor
         self.available_skills = sorted(available_skills or [])
 
+    def classify_intent(
+        self,
+        text,
+    ):
+        """
+        Backward-compatible wrapper.
+        """
+
+        return self.classify(text)["intent"]
+
     def classify(self, text):
 
-        if self.command_processor and self.command_processor.looks_like_automation(text):
-            return "automation"
+        text = str(text).strip()
+
+        if not text:
+
+            return {
+                "intent": "chat",
+                "confidence": 0.0,
+            }
+
+        # -----------------------------------
+        # Fast rule-based classification
+        # -----------------------------------
+
+        if self.command_processor:
+
+            if self.command_processor.looks_like_automation(text):
+
+                return {
+                    "intent": "automation",
+                    "confidence": 0.98,
+                }
 
         skill_text = ", ".join(self.available_skills) or "desktop control skills"
 
@@ -54,11 +82,21 @@ User input:
         response = self.brain.ask(prompt)
 
         if not response:
-            return "chat"
+            return {
+                "intent": "chat",
+                "confidence": 0.90,
+            }
 
-        response = response.strip().lower()
+        response = response.lower().strip()
 
-        if response.startswith("automation"):
-            return "automation"
+        if "automation" in response:
 
-        return "chat"
+            return {
+                "intent": "automation",
+                "confidence": 0.85,
+            }
+
+        return {
+            "intent": "chat",
+            "confidence": 0.80,
+        }

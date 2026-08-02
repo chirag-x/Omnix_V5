@@ -1,6 +1,7 @@
 import threading
 import time
 import mss
+import cv2
 import numpy as np
 from loguru import logger
 
@@ -18,7 +19,6 @@ class ScreenObserver:
         self.running = False
         self.thread = None
 
-        
     def start(self):
 
         logger.info("Starting screen observer")
@@ -57,6 +57,13 @@ class ScreenObserver:
                     screenshot = sct.grab(monitor)
 
                     frame = np.array(screenshot)
+
+                    frame = cv2.cvtColor(
+                        frame,
+                        cv2.COLOR_BGRA2BGR,
+                    )
+
+                    self.latest_frame = frame
 
                     self.latest_frame = frame
 

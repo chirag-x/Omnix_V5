@@ -132,6 +132,11 @@ class WakeListener:
             "hey ommix",
             "hey om nicks",
             "omnix",
+            "wake up omnix",
+            "hello omnix",
+            "omnix wake up",
+            "uthoo omnix",
+            "hey utho omnix",
         ]
 
         for marker in wake_markers:

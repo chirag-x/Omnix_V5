@@ -1,5 +1,6 @@
 from loguru import logger
 import time
+import asyncio
 import warnings
 import transformers
 from core.execution_context import ExecutionContext
@@ -25,6 +26,7 @@ class OmnixEngine:
 
         self.running = False
 
+        self.system = None
         self.context = None
         self.memory = None
         self.brain = None
@@ -38,7 +40,7 @@ class OmnixEngine:
     # Initialize
     # ==========================================================
 
-    def initialize(self):
+    async def initialize(self):
 
         logger.info("[OmnixEngine] Initializing")
 
@@ -48,6 +50,17 @@ class OmnixEngine:
             transformers.logging.set_verbosity_error()
         except Exception:
             pass
+
+        # -----------------------------
+        # V5 System Core
+        # -----------------------------
+        from system.system_manager import SystemManager
+
+        self.system = SystemManager()
+
+        self.system.start()
+
+        logger.success("[OmnixEngine] V5 System Manager initialized")
 
         # -----------------------------
         # Context
@@ -97,8 +110,9 @@ class OmnixEngine:
 
         self.observer = ScreenObserver()
         self.vision = VisionManager(
-            self.observer,
+            observer=self.observer,
             execution_context=self.execution_context,
+            window_manager=self.system.windows,
         )
 
         logger.success("[OmnixEngine] Vision Manager initialized")
@@ -115,9 +129,14 @@ class OmnixEngine:
             brain_manager=self.brain,
             conversation_manager=self.conversation,
             execution_context=self.execution_context,
+            system_manager=self.system,
         )
 
         logger.success("[OmnixEngine] Agent Controller initialized")
+        await self.agent.initialize()
+        logger.info(f"[OmnixEngine] Loaded {self.agent.skills.skill_count()} skills")
+
+        logger.success("[OmnixEngine] Agent skills initialized")
 
         # -----------------------------
         # Voice
@@ -134,7 +153,7 @@ class OmnixEngine:
     # Start
     # ==========================================================
 
-    def start(self):
+    async def start(self):
 
         logger.info("[OmnixEngine] Starting")
 
@@ -143,10 +162,12 @@ class OmnixEngine:
         try:
 
             if self.vision:
+
                 self.vision.start()
+
                 logger.success("[OmnixEngine] Vision started")
 
-            time.sleep(2)
+            await asyncio.sleep(2)
 
             if self.voice:
                 self.voice.start()
@@ -176,6 +197,22 @@ class OmnixEngine:
 
             self.shutdown()
 
+    def health_status(self):
+        """
+        Returns current Omnix subsystem status.
+        """
+
+        return {
+            "system": self.system is not None,
+            "context": self.context is not None,
+            "memory": self.memory is not None,
+            "brain": self.brain is not None,
+            "vision": self.vision is not None,
+            "agent": self.agent is not None,
+            "voice": self.voice is not None,
+            "running": self.running,
+        }
+
     # ==========================================================
     # Shutdown
     # ==========================================================
@@ -185,6 +222,21 @@ class OmnixEngine:
         logger.info("[OmnixEngine] Stopping")
 
         self.running = False
+
+        # -----------------------------
+        # Agent
+        # -----------------------------
+        try:
+
+            if self.agent and hasattr(self.agent, "agent_loop"):
+
+                self.agent.agent_loop.running = False
+
+                logger.success("[OmnixEngine] Agent stopped")
+
+        except Exception as e:
+
+            logger.exception(f"[OmnixEngine] Agent shutdown failed: {e}")
 
         # -----------------------------
         # Voice
@@ -207,3 +259,14 @@ class OmnixEngine:
             logger.exception(f"[OmnixEngine] Vision shutdown failed: {e}")
 
         logger.success("[OmnixEngine] Shutdown complete")
+
+        # -----------------------------
+
+        # V5 System Core
+        # -----------------------------
+        try:
+            if self.system:
+                self.system.shutdown()
+                logger.success("[OmnixEngine] System Manager stopped")
+        except Exception as e:
+            logger.exception(f"[OmnixEngine] System shutdown failed: {e}")

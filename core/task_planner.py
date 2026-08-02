@@ -1,32 +1,90 @@
 import json
+
 from loguru import logger
+from dataclasses import asdict
+
 from core.command_processor import CommandProcessor
 from core.execution_context import ExecutionContext
 
 
 class TaskPlanner:
+    """
+    Omnix V5 Task Planner
 
-    SKILL_DESCRIPTIONS = {
-        "open_app": "opens an installed desktop application. parameters: app",
-        "close_app": "closes a running application. parameters: app",
-        "type_text": "types text into the active input field. parameters: text",
-        "press_key": "presses one keyboard key. parameters: key",
-        "click_ui": "clicks a visible UI element by text using native UI automation first, OCR fallback second. parameters: text or target, optional index, window, control_type",
-        "click_mouse": "clicks screen coordinates. parameters: x, y",
-        "double_click": "double-clicks screen coordinates. parameters: x, y",
-        "right_click": "right-clicks screen coordinates. parameters: x, y",
-        "drag_mouse": "drags from one coordinate to another. parameters: x1, y1, x2, y2",
-        "hotkey": 'presses a keyboard shortcut. parameters: keys as a list, e.g. ["ctrl", "l"]',
-        "scroll_page": "scrolls the active page or app. parameters: direction, use up or down",
-        "media_control": "controls media and volume. parameters: action, one of volume_up, volume_down, mute, play_pause, next_track, previous_track",
-        "browser_action": "controls browser workflows. parameters: action one of open_browser, open_url, search, back, forward, refresh, new_tab, close_tab, focus_address, next_tab, previous_tab; use query for search and url for open_url",
-        "file_action": "performs file operations when supported by the file skill",
-        "ui_control": "controls any visible app/window UI. parameters: action one of click, double_click, right_click, invoke, set_text, type, focus, select, expand, collapse, check, uncheck; target/text optional for set_text, value required for set_text/type",
-        "window_control": "controls windows. parameters: action one of focus, switch, minimize, maximize, restore, close; optional title/window",
-        "wait_for_ui": "waits until a UI element appears, disappears, or is enabled. parameters: target/text, optional state visible/gone/enabled, timeout, window, control_type",
+    Responsibilities:
+    - Convert user goals into executable skill plans
+    - Maintain compatibility with old skill names
+    - Use SkillManager as the source of truth
+    - Provide context-aware planning
+    """
+
+    # --------------------------------------------------
+    # Legacy -> V5 Skill Mapping
+    #
+    # LLMs naturally generate old names.
+    # These aliases convert them into real V5 skills.
+    # --------------------------------------------------
+
+    SKILL_ALIASES = {
+        # Applications
+        "open_app": "builtin.applications.open",
+        "close_app": "builtin.applications.close",
+        "switch_app": "builtin.applications.switch",
+        # Browser
+        "browser_action": "builtin.browser.action",
+        "open_browser": "builtin.browser.open",
+        "search_web": "builtin.browser.search",
+        "browser_search": "builtin.browser.search",
+        # Files
+        "create_file": "builtin.files.create_file",
+        "open_file": "builtin.files.open_file",
+        "search_file": "builtin.files.search_file",
+        # Input
+        "type_text": "builtin.input.type_text",
+        "press_key": "builtin.input.press_key",
+        "click_mouse": "builtin.input.click",
+        "click": "builtin.input.click",
+        "double_click": "builtin.input.double_click",
+        "right_click": "builtin.input.right_click",
+        "middle_click": "builtin.input.middle_click",
+        "move_mouse": "builtin.input.move_mouse",
+        "drag_mouse": "builtin.input.drag",
+        "hotkey": "builtin.input.hotkey",
+        "copy": "builtin.input.copy",
+        "cut": "builtin.input.cut",
+        "paste": "builtin.input.paste",
+        "undo": "builtin.input.undo",
+        "redo": "builtin.input.redo",
+        "select_all": "builtin.input.select_all",
+        "scroll_page": "builtin.input.scroll",
+        # Vision
+        "click_ui": "builtin.vision.click_ui",
+        "find_element": "builtin.vision.find_element",
+        "wait_for_ui": "builtin.vision.wait_ui",
+        # System
+        "system_info": "builtin.system.system_info",
+        "lock": "builtin.system.lock",
+        "sleep": "builtin.system.sleep",
+        "restart": "builtin.system.restart",
+        "shutdown": "builtin.system.shutdown",
     }
 
-    DEFAULT_SKILLS = set(SKILL_DESCRIPTIONS)
+    # Human readable descriptions.
+    # Used only when generating planner prompts.
+
+    SKILL_DESCRIPTIONS = {
+        "builtin.applications.open": "Open a desktop application. Parameters: app",
+        "builtin.applications.close": "Close a running application. Parameters: app",
+        "builtin.browser.search": "Search the web. Parameters: query",
+        "builtin.browser.open": "Open browser. Parameters: browser",
+        "builtin.files.create_file": "Create a file. Parameters: path, content",
+        "builtin.files.open_file": "Open a file. Parameters: path",
+        "builtin.input.type_text": "Type text. Parameters: text",
+        "builtin.input.click": "Click coordinates. Parameters: x,y",
+        "builtin.vision.click_ui": "Click visible UI element. Parameters: target",
+        "builtin.vision.find_element": "Find UI element. Parameters: target",
+        "builtin.vision.wait_ui": "Wait for UI element. Parameters: target",
+    }
 
     def __init__(
         self,
@@ -34,115 +92,298 @@ class TaskPlanner:
         command_processor=None,
         available_skills=None,
         execution_context=None,
+        skill_manager=None,
     ):
 
         logger.info("[Planner] Initializing")
+
         self.brain = brain_manager
+
         self.command_processor = command_processor or CommandProcessor()
-        self.allowed_skills = set(available_skills or self.DEFAULT_SKILLS)
+
+        # V5 SkillManager connection
+
+        self.skill_manager = skill_manager
+
+        # Runtime loaded skills
+
+        self.allowed_skills = set(available_skills or [])
+
         self.execution_context = execution_context
 
         self.max_plan_steps = 20
 
-    def set_available_skills(self, available_skills):
+    def set_available_skills(
+        self,
+        skills=None,
+    ):
+        """
+        Update planner skills from SkillManager.
 
-        self.allowed_skills = set(available_skills or self.DEFAULT_SKILLS)
+        SkillManager is the source of truth.
+        """
+
+        loaded = set()
+
+        # Direct list provided
+
+        if skills:
+
+            loaded.update(skills)
+
+        # Pull from SkillManager
+
+        elif self.skill_manager:
+
+            try:
+
+                loaded.update(self.skill_manager.list_skills())
+
+            except Exception as e:
+
+                logger.warning(f"Could not load skills from SkillManager: {e}")
+
+        self.allowed_skills = loaded
+        self.available_skills = self.allowed_skills
+
+        logger.info(f"[Planner] Loaded {len(self.allowed_skills)} skills")
+
+        return self.allowed_skills
 
     def _available_skills_text(self):
+        """
+        Creates LLM readable skill list.
+
+        Uses actual V5 loaded skills.
+        """
+
+        if not self.allowed_skills:
+
+            return "No skills available."
 
         lines = []
 
-        for skill in sorted(self.allowed_skills):
+        skills = []
+
+        for skill in self.allowed_skills:
+
+            if isinstance(skill, str):
+
+                skills.append(skill)
+
+            else:
+
+                try:
+                    skills.append(skill.metadata.id)
+                except Exception:
+                    skills.append(skill.__name__)
+
+        for skill in sorted(skills):
+
             description = self.SKILL_DESCRIPTIONS.get(
-                skill,
-                "available skill loaded from the skills system. Use parameters required by that skill.",
+                skill, "No description available."
             )
+
             lines.append(f"- {skill}: {description}")
 
         return "\n".join(lines)
 
-    def _normalize_action(self, action):
+    def _normalize_action(
+        self,
+        action,
+    ):
+        """
+        Convert planner/LLM actions into
+        valid V5 skill actions.
+        """
 
         if not isinstance(action, dict):
             return None
 
-        skill = action.get("skill") or action.get("tool")
+        action = dict(action)
+
+        # Support multiple LLM formats
+
+        skill = (
+            action.get("skill")
+            or action.get("action")
+            or action.get("tool")
+            or action.get("name")
+        )
 
         if not skill:
+
             return None
 
-        parameters = action.get("parameters", {})
+        skill = str(skill).strip()
 
-        if not isinstance(parameters, dict):
-            parameters = {}
-        else:
-            parameters = dict(parameters)
+        # Convert legacy name -> V5 skill
 
-        for key, value in action.items():
-            if key not in {"skill", "tool", "parameters"}:
-                parameters.setdefault(key, value)
+        normalized_skill = self.SKILL_ALIASES.get(skill, skill)
 
-        if skill == "open_browser":
-            skill = "browser_action"
-            parameters.setdefault("action", "open_browser")
+        action["skill"] = normalized_skill
 
-            if not parameters.get("browser"):
-                parameters["browser"] = parameters.pop(
-                    "app",
-                    ExecutionContext.DEFAULT_BROWSER,
-                )
+        # Normalize parameters
+
+        if "parameters" not in action:
+
+            if "params" in action:
+
+                action["parameters"] = action.pop("params")
+
+            elif "args" in action:
+
+                action["parameters"] = action.pop("args")
+
             else:
-                parameters.pop("app", None)
 
-        if skill == "open_url":
-            skill = "browser_action"
-            parameters.setdefault("action", "open_url")
+                action["parameters"] = {}
 
-        if skill in {"browser_search", "search_web", "web_search"}:
-            skill = "browser_action"
-            parameters.setdefault("action", "search")
+        # Ensure dictionary
 
-        if skill in {"click", "tap"}:
-            skill = "click_ui"
+        if not isinstance(action["parameters"], dict):
 
-        if skill in {"control_ui", "ui"}:
-            skill = "ui_control"
+            action["parameters"] = {}
 
-        if skill in {"window", "control_window"}:
-            skill = "window_control"
+        return action
 
-        if skill in {"wait_for", "wait_until"}:
-            skill = "wait_for_ui"
+    def _normalize_plan(
+        self,
+        plan,
+    ):
+        """
+        Normalize complete execution plan.
+        """
 
-        # 🔥 FIX: Prevent trying to kill websites as OS processes
-        if skill == "close_app" and str(parameters.get("app", "")).lower() in [
-            "youtube",
-            "google",
-            "gmail",
-            "facebook",
-            "twitter",
-            "whatsapp",
-            "instagram",
-        ]:
-            skill = "browser_action"
-            parameters = {"action": "close_tab"}
-
-        if skill not in self.allowed_skills:
-            logger.warning(f"[Planner] Invalid skill generated: {skill}")
-            return None
-
-        return {"skill": skill, "parameters": parameters}
-
-    def _normalize_plan(self, plan):
+        if not isinstance(plan, list):
+            return []
 
         normalized = []
 
-        for action in plan:
-            item = self._normalize_action(action)
-            if item:
-                normalized.append(item)
+        for step in plan:
+
+            action = self._normalize_action(step)
+
+            if action:
+
+                normalized.append(action)
 
         return normalized
+
+    def _ensure_expected(
+        self,
+        action,
+    ):
+        """
+        Add default verification data
+        for V5 skill execution.
+        """
+
+        if not isinstance(action, dict):
+            return action
+
+        if "expected" in action and action["expected"]:
+
+            return action
+
+        skill = action.get("skill", "")
+
+        parameters = action.get("parameters", {})
+
+        expected = {}
+
+        # -----------------------------
+        # Application skills
+        # -----------------------------
+
+        if skill == "builtin.applications.open":
+
+            expected = {
+                "application_open": (
+                    parameters.get("app") or parameters.get("application")
+                )
+            }
+
+        elif skill == "builtin.applications.close":
+
+            expected = {
+                "application_closed": (
+                    parameters.get("app") or parameters.get("application")
+                )
+            }
+
+        # -----------------------------
+        # Browser skills
+        # -----------------------------
+
+        elif skill in (
+            "builtin.browser.search",
+            "builtin.browser.action",
+        ):
+
+            expected = {"browser_action": "search_completed"}
+
+        elif skill == "builtin.browser.open":
+
+            expected = {"browser_open": True}
+
+        # -----------------------------
+        # Files
+        # -----------------------------
+
+        elif skill == "builtin.files.create_file":
+
+            expected = {"file_created": (parameters.get("path"))}
+
+        elif skill == "builtin.files.open_file":
+
+            expected = {"file_opened": (parameters.get("path"))}
+
+        # -----------------------------
+        # Input
+        # -----------------------------
+
+        elif skill == "builtin.input.type_text":
+
+            expected = {"text_typed": True}
+
+        elif skill == "builtin.input.click":
+
+            expected = {"click_completed": True}
+
+        # -----------------------------
+        # Vision
+        # -----------------------------
+
+        elif skill == "builtin.vision.find_element":
+
+            expected = {
+                "element_found": (parameters.get("element") or parameters.get("target"))
+            }
+
+        elif skill == "builtin.vision.click_ui":
+
+            expected = {
+                "element_clicked": (
+                    parameters.get("element") or parameters.get("target")
+                )
+            }
+
+        # -----------------------------
+        # System
+        # -----------------------------
+
+        elif skill.startswith("builtin.system."):
+
+            expected = {"system_action_completed": True}
+
+        else:
+
+            expected = {"completed": True}
+
+        action["expected"] = expected
+
+        return action
 
     def _inject_runtime_context(self, context):
 
@@ -164,7 +405,7 @@ class TaskPlanner:
         """
         Optimize a rule-generated plan using the current execution context.
         """
-
+        plan = [self._ensure_expected(step) for step in plan]
         if not plan:
             return plan
 
@@ -186,7 +427,7 @@ class TaskPlanner:
             # Skip reopening the same app
             # ---------------------------------
 
-            if skill == "open_app":
+            if skill == "builtin.applications.open":
 
                 app = params.get("app")
 
@@ -202,7 +443,7 @@ class TaskPlanner:
             # Browser already exists
             # ---------------------------------
 
-            if skill == "browser_action":
+            if skill == "builtin.browser.action":
 
                 if current_browser:
 
@@ -222,9 +463,12 @@ class TaskPlanner:
         Returns None if the command isn't supported by rule-based planning.
         """
 
-        plan = self.command_processor.create_simple_plan(command)
+        structured = self.command_processor.process(command)
+
+        plan = self._rule_engine(structured)
 
         if plan:
+            plan = self._normalize_plan(plan)
             plan = self._optimize_plan(plan)
 
             logger.info("[Planner] Using rule planner")
@@ -232,6 +476,64 @@ class TaskPlanner:
             return plan
 
         return None
+
+    # ------------------------------------------------
+    # Rule Engine
+    # ------------------------------------------------
+
+    def _rule_engine(
+        self,
+        command,
+    ):
+        """
+        Fast rule-based planner.
+
+        Uses StructuredCommand instead of the old
+        CommandProcessor plan generation.
+        """
+
+        if command.intent != "automation":
+            return None
+
+        plan = []
+
+        if command.action == "open":
+
+            plan.append(
+                {
+                    "skill": "builtin.applications.open",
+                    "parameters": {"app": command.application},
+                }
+            )
+
+        elif command.action == "click":
+
+            plan.append(
+                {
+                    "skill": "builtin.vision.click_ui",
+                    "parameters": {"target": command.target},
+                }
+            )
+
+        elif command.action == "search":
+
+            plan.append(
+                {
+                    "skill": "builtin.browser.search",
+                    "parameters": {"query": command.query},
+                }
+            )
+
+        elif command.action == "type":
+
+            plan.append(
+                {
+                    "skill": "builtin.input.type_text",
+                    "parameters": {"text": command.text},
+                }
+            )
+
+        return self._normalize_plan(plan)
 
     # ------------------------------------------------
     # Create full plan
@@ -245,32 +547,62 @@ class TaskPlanner:
             return workflow_plan
 
         system_context = None
-        vision_context = None
+        vision_frame = None
+
+        vision_context = ""
+        screen_state = ""
+
         ui_elements = []
         known_patterns = []
+
         runtime_context = {}
 
         if context:
+
             runtime_context = context.get("runtime", {})
+
             system_context = context.get("system")
-            vision_context = context.get("screen_summary") or context.get("vision")
 
-            # 🔥 FIX: UI Elements ko compress kar rahe hain taaki tokens bach sakein
-            raw_ui = (context.get("ui_elements") or [])[:30]
-            ui_elements = [
-                {"text": e.get("text"), "type": e.get("type")}
-                for e in raw_ui
-                if e.get("text")
-            ]
+            vision_frame = context.get("vision")
 
-            # 🔥 FIX: Patterns ko 5 se kam karke 3 kar diya aur unnecessary data hata diya
+            if vision_frame:
+
+                vision_context = vision_frame.summary or ""
+
+                if vision_frame.screen_state:
+                    try:
+                        screen_state = json.dumps(
+                            asdict(vision_frame.screen_state),
+                            indent=2,
+                        )
+                    except TypeError:
+                        screen_state = str(vision_frame.screen_state)
+
+                if vision_frame.ui_tree:
+                    raw_ui = vision_frame.ui_tree.elements[:30]
+
+                    ui_elements = [
+                        {
+                            "text": element.text,
+                            "type": element.element_type,
+                        }
+                        for element in raw_ui
+                        if element.text
+                    ]
+
             raw_patterns = (context.get("known_patterns") or [])[-3:]
+
             for pattern in raw_patterns:
+
                 compressed_pattern = [
-                    {"text": e.get("text"), "type": e.get("type")}
+                    {
+                        "text": e.get("text"),
+                        "type": e.get("type"),
+                    }
                     for e in pattern
                     if e.get("text")
                 ]
+
                 known_patterns.append(compressed_pattern)
 
         prompt = f"""
@@ -281,8 +613,11 @@ class TaskPlanner:
                 System context:
                 {system_context}
 
-                Vision context:
+                Vision Summary:
                 {vision_context}
+
+                Screen State:
+                {screen_state}
 
                 Runtime context:
                 {json.dumps(runtime_context, indent=2)}
@@ -382,26 +717,22 @@ class TaskPlanner:
 
             normalized_plan = self._normalize_plan(plan)
 
+            normalized_plan = [self._ensure_expected(step) for step in normalized_plan]
+
             return normalized_plan or self._create_rule_plan(command) or []
 
         except Exception as e:
             logger.error(f"[Planner] Task planning failed: {e}")
             return self._create_rule_plan(command) or []
 
-    def _create_workflow_plan(self, command):
-        if not hasattr(self.command_processor, "create_workflow_plan"):
-            return []
-
-        plan = self.command_processor.create_workflow_plan(command)
-
-        if not plan:
-            return []
-
-        normalized_plan = self._normalize_plan(plan)
-
-        if normalized_plan:
-            logger.info("[Planner] Using workflow planner")
-            return self._optimize_plan(normalized_plan)
+    def _create_workflow_plan(
+        self,
+        command,
+    ):
+        """
+        Workflow planning is now handled directly
+        by the Planner (LLM or future workflow engine).
+        """
 
         return []
 
@@ -412,9 +743,41 @@ class TaskPlanner:
     def next_action(self, goal, context):
 
         system_context = context.get("system")
-        ui_elements = context.get("ui_elements")
-        known_patterns = context.get("known_patterns")
+
+        vision_frame = context.get("vision")
+
+        vision_summary = ""
+        screen_state = ""
+
+        ui_elements = []
+
+        if vision_frame:
+
+            vision_summary = vision_frame.summary or ""
+
+            if vision_frame.screen_state:
+                try:
+                    screen_state = json.dumps(
+                        asdict(vision_frame.screen_state),
+                        indent=2,
+                    )
+                except TypeError:
+                    screen_state = str(vision_frame.screen_state)
+
+            if vision_frame.ui_tree:
+                ui_elements = [
+                    {
+                        "text": element.text,
+                        "type": element.element_type,
+                    }
+                    for element in vision_frame.ui_tree.elements[:30]
+                    if element.text
+                ]
+
+        known_patterns = context.get("known_patterns", [])
+
         execution_context = getattr(self, "execution_context", None)
+
         runtime_context = execution_context.to_dict() if execution_context else {}
 
         prompt = f"""
@@ -426,15 +789,20 @@ Goal:
 System state:
 {system_context}
 
+Vision Summary:
+{vision_summary}
+
+Screen State:
+{screen_state}
+
 Runtime context:
 {json.dumps(runtime_context, indent=2)}
 
 Visible UI elements:
-{ui_elements}
+{json.dumps(ui_elements)}
 
 Known UI patterns:
-{known_patterns}
-
+{json.dumps(known_patterns)}
 Available skills:
 {self._available_skills_text()}
 

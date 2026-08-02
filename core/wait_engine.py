@@ -2,8 +2,6 @@ import time
 
 from loguru import logger
 
-from system.window_controller import WindowController
-
 
 class WaitEngine:
     def __init__(
@@ -22,23 +20,32 @@ class WaitEngine:
         logger.info(f"[WaitEngine] Waiting for window title={title} app={app}")
 
         def condition():
-            info = WindowController.get_active_window_info()
-            window = str(info.get("window") or "").lower()
-            active_app = str(info.get("app") or "").lower()
+
+            window = str(self._get_context_value("window", "")).lower()
+
+            active_app = str(self._get_context_value("app", "")).lower()
 
             if self.execution_context:
-                self.execution_context.sync_from_system(
-                    active_window=info.get("window"),
-                    active_app=info.get("app"),
-                )
+
+                try:
+
+                    self.execution_context.sync_from_system()
+
+                except Exception as e:
+
+                    logger.debug(f"[WaitEngine] Context sync failed: {e}")
 
             title_matches = not title or str(title).lower() in window
+
             app_matches = not app or str(app).lower() == active_app
+
             return title_matches and app_matches
 
         return self._wait_until(condition, timeout=timeout)
 
-    def wait_for_element(self, target, timeout=10, control_type=None, window_title=None):
+    def wait_for_element(
+        self, target, timeout=10, control_type=None, window_title=None
+    ):
         logger.info(f"[WaitEngine] Waiting for element: {target}")
 
         if not self.ui_controller:
@@ -88,7 +95,9 @@ class WaitEngine:
     def wait_until_visible(self, target, timeout=10, **kwargs):
         return self.wait_for_element(target, timeout=timeout, **kwargs)
 
-    def wait_until_enabled(self, target, timeout=10, control_type=None, window_title=None):
+    def wait_until_enabled(
+        self, target, timeout=10, control_type=None, window_title=None
+    ):
         logger.info(f"[WaitEngine] Waiting until enabled: {target}")
 
         if not self.ui_controller:
@@ -144,23 +153,26 @@ class WaitEngine:
                 if value:
                     parts.append(str(value))
 
-        analysis = (
-            self.vision_manager.get_latest_analysis()
-            if self.vision_manager is not None
-            else {}
-        ) or {}
+        vision_frame = (
+            self.vision_manager.get_latest_frame() if self.vision_manager else None
+        )
 
-        for key in ("text", "ocr_text", "screen_text"):
-            value = analysis.get(key)
+        if vision_frame:
 
-            if isinstance(value, str):
-                parts.append(value)
+            if vision_frame.summary:
+                parts.append(vision_frame.summary)
 
-        for element in analysis.get("ui_elements", []) or []:
-            value = element.get("text")
+            if vision_frame.ui_tree:
 
-            if value:
-                parts.append(str(value))
+                seen = set()
+
+                for element in vision_frame.ui_tree.elements:
+
+                    text = str(element.text or "").strip()
+
+                    if text and text not in seen:
+                        seen.add(text)
+                        parts.append(text)
 
         return "\n".join(parts)
 
@@ -170,13 +182,16 @@ class WaitEngine:
             window = observation.get("active_window")
             return window, tuple(self._element_signature(elements))
 
-        info = WindowController.get_active_window_info()
         elements = []
 
         if self.ui_controller:
+
             elements = self.ui_controller.list_controls(limit=100)
 
-        return info.get("window"), tuple(self._element_signature(elements))
+        return (
+            self._get_context_value("window", ""),
+            tuple(self._element_signature(elements)),
+        )
 
     def _element_signature(self, elements):
         return sorted(
@@ -187,3 +202,38 @@ class WaitEngine:
             )
             for element in elements or []
         )
+
+    def _get_context_value(
+        self,
+        key,
+        default=None,
+    ):
+        """
+        Compatible reader for ExecutionContext.
+
+        Supports:
+        - V5 ExecutionContext object
+        - old dictionary context
+        """
+
+        if not self.execution_context:
+            return default
+
+        # Old dict style support
+
+        if isinstance(self.execution_context, dict):
+
+            return self.execution_context.get(key, default)
+
+        # V5 object style
+
+        mapping = {
+            "window": "current_window",
+            "app": "current_app",
+            "browser": "current_browser",
+            "url": "current_url",
+        }
+
+        attribute = mapping.get(key, key)
+
+        return getattr(self.execution_context, attribute, default)

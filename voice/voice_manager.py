@@ -214,8 +214,9 @@ class VoiceManager:
                 self.speak(response)
 
         except Exception as e:
-            logger.error(f"Wake handler error: {e}")
-            self.speak("Wake handler error:")
+            # logger.error(f"Wake handler error: {e}")
+            logger.exception("[Voice] wake handler error:")
+            
 
         finally:
             try:

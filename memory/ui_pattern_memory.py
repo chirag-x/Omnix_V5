@@ -32,10 +32,7 @@ class UIPatternMemory:
 
         try:
 
-            os.makedirs(
-                os.path.dirname(self.file_path),
-                exist_ok=True
-            )
+            os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
 
             with open(self.file_path, "w") as f:
 
@@ -43,16 +40,12 @@ class UIPatternMemory:
                     self.patterns,
                     f,
                     indent=2,
-                    default=lambda o:
-                    int(o) if hasattr(o, "item")
-                    else str(o)
+                    default=lambda o: int(o) if hasattr(o, "item") else str(o),
                 )
 
         except Exception as e:
 
-            logger.error(
-                f"Failed to save UI patterns: {e}"
-            )
+            logger.error(f"Failed to save UI patterns: {e}")
 
     def store_pattern(self, app_name, ui_elements):
 
@@ -63,27 +56,34 @@ class UIPatternMemory:
             self.patterns[app_name] = []
 
         #  FIX: Only extract and store essential data to keep the JSON small
-        simplified_elements = [
-            {
-                "type": str(item.get("type", "")),
-                "text": str(item.get("text", ""))[:50],
-                "x": item.get("x"),
-                "y": item.get("y")
-            }
-            for item in ui_elements if item.get("text")
-        ]
+        simplified_elements = []
 
-        current_signature = sorted([
-            (e["type"], e["text"])
-            for e in simplified_elements
-        ])
+        for item in ui_elements:
+
+            if not item.text:
+                continue
+
+            simplified_elements.append(
+                {
+                    "type": item.element_type,
+                    "text": item.text[:50],
+                    "x": item.bbox.center_x if item.bbox else None,
+                    "y": item.bbox.center_y if item.bbox else None,
+                }
+            )
+
+        current_signature = sorted(
+            [(e["type"], e["text"]) for e in simplified_elements]
+        )
 
         for existing in self.patterns[app_name]:
 
-            existing_signature = sorted([
-                (str(e.get("type", "")), str(e.get("text", ""))[:50])
-                for e in existing
-            ])
+            existing_signature = sorted(
+                [
+                    (str(e.get("type", "")), str(e.get("text", ""))[:50])
+                    for e in existing
+                ]
+            )
 
             if existing_signature == current_signature:
                 return
@@ -92,41 +92,25 @@ class UIPatternMemory:
         self.patterns[app_name].append(simplified_elements)
 
         #  FIX: Keep only the last 10 patterns instead of 20
-        self.patterns[app_name] = (
-            self.patterns[app_name][-10:]
-        )
+        self.patterns[app_name] = self.patterns[app_name][-10:]
 
         self._save()
 
-        logger.info(
-            f"Stored new UI pattern for {app_name}"
-        )
+        logger.info(f"Stored new UI pattern for {app_name}")
 
     def get_patterns(self, app_name):
 
-        return self.patterns.get(
-            app_name,
-            []
-        )
+        return self.patterns.get(app_name, [])
 
-    def match_pattern(
-        self,
-        app_name,
-        text
-    ):
+    def match_pattern(self, app_name, text):
 
-        patterns = self.patterns.get(
-            app_name,
-            []
-        )
+        patterns = self.patterns.get(app_name, [])
 
         for pattern in patterns:
 
             for element in pattern:
 
-                label = str(
-                    element.get("text", "")
-                ).lower()
+                label = str(element.get("text", "")).lower()
 
                 if text.lower() in label:
                     return element

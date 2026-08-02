@@ -1,5 +1,3 @@
-import time
-
 from loguru import logger
 
 from core.target_resolver import TargetResolver
@@ -144,20 +142,18 @@ class AgentLoop:
                 action = resolved
 
             last_action = action
-            result = self.executor.execute_skill(action)
+            result = self.executor.execute_step(action)
             last_result = result
 
             logger.info(f"[AgentLoop] Execution result: {result}")
 
-            if result == "error":
+            if self._is_error(result):
                 logger.warning("[AgentLoop] Action failed; replanning")
                 continue
 
-            if result in ["done", "success"]:
+            if self._is_success(result):
                 generated_plan.append(action)
                 logger.info("[AgentLoop] Action succeeded")
-
-            time.sleep(0.8)
 
         if generated_plan:
             logger.info("[AgentLoop] Storing successful behavior")
@@ -171,12 +167,38 @@ class AgentLoop:
         for step in plan:
             logger.info(f"[AgentLoop] Executing stored step: {step}")
 
-            result = self.executor.execute_skill(step)
+            result = self.executor.execute_step(step)
 
             if result == "error":
                 logger.warning("[AgentLoop] Stored plan failed; abandoning")
                 return
 
-            time.sleep(1)
-
         logger.info("[AgentLoop] Stored behavior execution finished")
+
+    def _is_success(self, result):
+        """
+        Compatible with:
+        - old string results
+        - V5 SkillResult objects
+        """
+
+        if result in [
+            "success",
+            "done",
+        ]:
+            return True
+
+        if hasattr(result, "success"):
+            return bool(result.success)
+
+        return False
+
+    def _is_error(self, result):
+
+        if result == "error":
+            return True
+
+        if hasattr(result, "success"):
+            return not result.success
+
+        return False

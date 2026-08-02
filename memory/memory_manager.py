@@ -3,7 +3,7 @@ import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from loguru import logger
-from system.resource_manager import ResourceManager
+from system.services.resource_controller import ResourceController
 
 
 class MemoryManager:
@@ -14,7 +14,7 @@ class MemoryManager:
 
         # embedding model
 
-        self.model = ResourceManager.get_instance().get_embedding_model()
+        self.model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
         self.dimension = 384
 
@@ -52,7 +52,8 @@ class MemoryManager:
             vector = np.array(embedding).astype("float32")
 
             distances, indices = self.index.search(
-                vector, min(top_k, len(self.memories)))
+                vector, min(top_k, len(self.memories))
+            )
 
             results = []
 

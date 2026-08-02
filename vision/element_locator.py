@@ -1,6 +1,5 @@
 from loguru import logger
 
-
 class ElementLocator:
 
     def __init__(self, vision_manager):
@@ -11,12 +10,12 @@ class ElementLocator:
 
     def _get_text_elements(self):
 
-        analysis = self.vision_manager.get_latest_analysis()
+        frame = self.vision_manager.get_latest_frame()
 
-        if not analysis:
+        if frame is None:
             return []
 
-        return analysis.get("texts", [])
+        return frame.texts
 
     # ------------------------------------------------
     # Basic text search (improved matching)
@@ -29,7 +28,7 @@ class ElementLocator:
 
         for element in texts:
 
-            text = element.get("text", "").lower()
+            text = (element.text or "").lower()
 
             if target in text or text in target:
 
@@ -52,7 +51,7 @@ class ElementLocator:
 
         for element in texts:
 
-            text = element.get("text", "").lower()
+            text = (element.text or "").lower()
 
             if target in text or text in target:
                 results.append(element)
@@ -66,7 +65,7 @@ class ElementLocator:
     # ------------------------------------------------
     def sort_by_position(self, elements):
 
-        return sorted(elements, key=lambda e: e.get("y", 0))
+        return sorted(elements, key=lambda e: e.bbox.center_y if e.bbox else 0)
 
     # ------------------------------------------------
     # Find nth result
@@ -87,8 +86,7 @@ class ElementLocator:
 
         element = elements[index]
 
-        logger.info(
-            f"Selected result #{index+1}: {element.get('text')}")
+        logger.info(f"Selected result #{index+1}: {element.text}")
 
         return element
 
@@ -97,13 +95,13 @@ class ElementLocator:
     # ------------------------------------------------
     def get_coordinates(self, element):
 
-        if not element:
+        if not element or not element.bbox:
             return None
 
-        x = element.get("x") or element.get("center_x")
-        y = element.get("y") or element.get("center_y")
-
-        return (x, y)
+        return (
+            element.bbox.center_x,
+            element.bbox.center_y,
+        )
 
     # ------------------------------------------------
     # Find elements likely to be search results
@@ -115,10 +113,7 @@ class ElementLocator:
         if not texts:
             return []
 
-        candidates = [
-            t for t in texts
-            if len(t.get("text", "")) > 4
-        ]
+        candidates = [t for t in texts if len(t.text or "") > 4]
 
         candidates = self.sort_by_position(candidates)
 
@@ -148,7 +143,7 @@ class ElementLocator:
         if not texts or len(texts) < 3:
             return []
 
-        sorted_items = sorted(texts, key=lambda e: e.get("y", 0))
+        sorted_items = sorted(texts, key=lambda e: e.bbox.center_y if e.bbox else 0)
 
         groups = []
 
@@ -157,7 +152,7 @@ class ElementLocator:
             current = sorted_items[i]
             nxt = sorted_items[i + 1]
 
-            dy = abs(nxt["y"] - current["y"])
+            dy = abs(nxt.bbox.center_y - current.bbox.center_y)
 
             if 10 < dy < 80:
                 groups.append(current)
@@ -172,37 +167,35 @@ class ElementLocator:
     # ------------------------------------------------
     def find_near_object(self, text_target, object_type, radius=120):
 
-        analysis = self.vision_manager.get_latest_analysis()
+        frame = self.vision_manager.get_latest_frame()
 
-        if not analysis:
+        if frame is None:
             return None
 
-        texts = analysis.get("texts", [])
-        objects = analysis.get("objects", [])
+        texts = frame.texts
+        objects = frame.objects
 
         for text in texts:
 
-            label = text.get("text", "").lower()
+            label = (text.text or "").lower()
 
             if text_target.lower() in label:
 
-                tx = text.get("x")
-                ty = text.get("y")
-
+                tx = text.bbox.center_x
+                ty = text.bbox.center_y
                 for obj in objects:
 
-                    if obj.get("type") == object_type:
+                    if obj.label.lower() == object_type.lower():
 
-                        ox = obj.get("x")
-                        oy = obj.get("y")
+                        ox = obj.bbox.center_x
+                        oy = obj.bbox.center_y
 
                         dx = abs(ox - tx)
                         dy = abs(oy - ty)
 
                         if dx < radius and dy < radius:
 
-                            logger.info(
-                                f"Found {object_type} near '{label}'")
+                            logger.info(f"Found {object_type} near '{label}'")
 
                             return obj
 

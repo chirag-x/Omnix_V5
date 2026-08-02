@@ -11,8 +11,8 @@ class UIDetector:
 
         logger.info("Loading YOLO vision model")
 
-        model_path = "vision/models/yolov8n.pt"
-        self.model = YOLO(model_path)
+        MODEL_PATH = Path("vision/models/yolo11n.pt")
+        self.model = YOLO(MODEL_PATH)
 
     def detect(self, frame):
 
@@ -47,14 +47,16 @@ class UIDetector:
                 width = abs(bbox[2] - bbox[0])
                 height = abs(bbox[3] - bbox[1])
 
-                objects.append({
-                    "type": name,
-                    "confidence": conf,
-                    "bbox": bbox,
-                    "x": x,
-                    "y": y,
-                    "width": width,
-                    "height": height
-                })
+                objects.append(
+                    {
+                        "type": name,
+                        "confidence": conf,
+                        "bbox": bbox,
+                        "x": x,
+                        "y": y,
+                        "width": width,
+                        "height": height,
+                    }
+                )
 
         return objects

@@ -1,6 +1,7 @@
 import numpy as np
 import pygetwindow as gw
-from system.keyboard_mouse_controller import KeyboardMouseController
+from system.services.keyboard_controller import KeyboardController
+from system.services.mouse_controller import MouseController
 from loguru import logger
 
 
@@ -12,11 +13,14 @@ class VisionController:
 
         self.observer = screen_observer
 
+        self.keyboard = KeyboardController()
+        self.mouse = MouseController()
+
     def click(self, x, y):
 
         logger.info(f"Clicking at {x}, {y}")
 
-        KeyboardMouseController.click(x, y)
+        self.mouse.click(x, y)
 
     def click_ui_element(self, element):
 
@@ -29,17 +33,15 @@ class VisionController:
 
         logger.info(f"Typing text via vision system: {text}")
 
-        KeyboardMouseController.type_text(text)
+        self.keyboard.write(text)
 
     def press_key(self, key):
 
         logger.info(f"Pressing key: {key}")
 
-        KeyboardMouseController.press_key(key)
+        self.keyboard.press(key)
 
     def ensure_window_focus(self, window_title):
-
-        
 
         windows = gw.getWindowsWithTitle(window_title)
 

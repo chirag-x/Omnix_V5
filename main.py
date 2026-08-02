@@ -1,19 +1,21 @@
-
 from utils.logger import setup_logger
+import asyncio
+
 from core.omnix_engine import OmnixEngine
 
-def main():
+
+async def main():
 
     setup_logger()
-
     engine = OmnixEngine()
 
-    engine.initialize()
+    await engine.initialize()
 
-    engine.start()
+    await engine.start()
 
     engine.run()
 
 
 if __name__ == "__main__":
-    main()
+
+    asyncio.run(main())
