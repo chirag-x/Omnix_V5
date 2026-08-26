@@ -9,6 +9,8 @@ Project: Omnix V5
 
 from __future__ import annotations
 
+import inspect
+
 from skills.core.base_skill import BaseSkill
 from skills.core.skill_context import SkillContext
 from skills.core.skill_metadata import SkillMetadata
@@ -42,7 +44,24 @@ class SystemInfoSkill(BaseSkill):
 
         try:
 
-            info = await context.system.get_information()
+            if context.system is None:
+                return SkillResult.failure(
+                    message=("System service is unavailable."),
+                )
+
+            if hasattr(context.system, "get_information"):
+                info = context.system.get_information()
+            elif hasattr(context.system, "get_info"):
+                info = context.system.get_info()
+            elif hasattr(context.system, "statistics"):
+                info = context.system.statistics()
+            else:
+                return SkillResult.failure(
+                    message=("System information API is unavailable."),
+                )
+
+            if inspect.isawaitable(info):
+                info = await info
 
         except Exception as error:
 

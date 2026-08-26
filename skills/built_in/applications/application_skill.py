@@ -37,6 +37,12 @@ class ApplicationSkill(BaseSkill, ABC):
         """
         Open an application.
         """
+        print("=" * 80)
+        print("AUTOMATION OBJECT :", context.automation)
+        print("AUTOMATION TYPE   :", type(context.automation))
+        print("AUTOMATION MODULE :", type(context.automation).__module__)
+        print("=" * 80)
+
         return await context.automation.open_application(application)
 
     async def close(

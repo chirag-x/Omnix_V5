@@ -7,8 +7,6 @@ Project: Omnix V5
 
 from __future__ import annotations
 
-from matplotlib.style import context
-
 from skills.core.skill_context import SkillContext
 from skills.core.skill_metadata import SkillMetadata
 from skills.core.skill_result import SkillResult

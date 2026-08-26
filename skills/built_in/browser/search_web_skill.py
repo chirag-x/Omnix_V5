@@ -54,17 +54,20 @@ class SearchWebSkill(BrowserSkill):
             default=False,
         )
 
-        await self.ensure_browser(context)
+        await self.ensure_browser(context, browser=browser)
 
         if new_tab:
             await context.browser.new_tab()
 
         try:
 
-            await context.browser.search(
-                query=query,
-                browser=browser,
-            )
+            try:
+                await context.browser.search(
+                    query=query,
+                    browser=browser,
+                )
+            except TypeError:
+                await context.browser.search(query)
 
         except Exception as error:
 

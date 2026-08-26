@@ -47,6 +47,9 @@ class OpenBrowserSkill(BrowserSkill):
 
         url = context.entity("url")
 
+        if context.browser is None:
+            return SkillResult.failure(message="Browser service is unavailable.")
+
         # -----------------------------------------
         # Launch browser if necessary
         # -----------------------------------------
@@ -72,7 +75,13 @@ class OpenBrowserSkill(BrowserSkill):
 
         if url:
 
-            await context.browser.open_url(url)
+            try:
+                opened = await context.browser.open_url(url, browser=browser)
+            except TypeError:
+                opened = await context.browser.open_url(url)
+
+            if opened is False:
+                return SkillResult.failure(message=f"Failed to open {url}.")
 
         return SkillResult.success_result(
             message=f"{browser} {action} successfully.",

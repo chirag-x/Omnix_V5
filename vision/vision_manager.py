@@ -5,7 +5,7 @@ import pyautogui
 
 from loguru import logger
 
-from core.execution_context import ExecutionContext
+from core.planning.execution_context import ExecutionContext
 from memory.ui_pattern_memory import UIPatternMemory
 from vision.vision_pipeline import VisionPipeline
 

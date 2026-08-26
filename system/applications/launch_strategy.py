@@ -72,10 +72,14 @@ class LaunchStrategy:
 
         try:
 
-            subprocess.Popen(
+            logger.info(f"[LaunchStrategy] Executable = {executable}")
+
+            process = subprocess.Popen(
                 [str(executable), *arguments],
                 cwd=executable.parent,
             )
+
+            logger.info(f"[LaunchStrategy] PID = {process.pid}")
 
             logger.info("Launched %s", executable)
 
@@ -102,10 +106,14 @@ class LaunchStrategy:
 
         try:
 
-            subprocess.Popen(
+            logger.info(f"[LaunchStrategy] Command = {command}")
+
+            process = subprocess.Popen(
                 [command, *arguments],
                 shell=True,
             )
+
+            logger.info(f"[LaunchStrategy] PID = {process.pid}")
 
             logger.info("Executed command: %s", command)
 
@@ -208,8 +216,6 @@ class LaunchStrategy:
 
         except Exception:
 
-            logger.exception(
-                "Failed launching as administrator."
-            )
+            logger.exception("Failed launching as administrator.")
 
             return False

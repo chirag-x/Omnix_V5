@@ -21,6 +21,60 @@ class BrainManager:
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY missing in .env file")
 
+    @property
+    def capabilities(self):
+        return [
+            "chat",
+            "ask",
+            "generate",
+            "reason",
+            "plan",
+        ]
+
+    @property
+    def metadata(self):
+        return {
+            "provider": "openrouter",
+            "model": self.model,
+            "type": "brain_manager",
+        }
+
+    def generate(
+        self,
+        prompt: str,
+        *args,
+        **kwargs,
+    ):
+        return self.ask(
+            prompt,
+            *args,
+            **kwargs,
+        )
+
+    def chat(
+        self,
+        message: str,
+        *args,
+        **kwargs,
+    ):
+        return self.ask(
+            message,
+            *args,
+            **kwargs,
+        )
+
+    def reason(
+        self,
+        input_data: str,
+        *args,
+        **kwargs,
+    ):
+        return self.ask(
+            input_data,
+            *args,
+            **kwargs,
+        )
+
     def _chat_completions_url(self, url):
 
         url = str(url or "").rstrip("/")
@@ -41,8 +95,8 @@ class BrainManager:
         self,
         message: str,
         context: str = None,
-        vision_data: dict = None,   # 🔥 NEW
-        conversation_history: list = None
+        vision_data: dict = None,  # 🔥 NEW
+        conversation_history: list = None,
     ) -> str | None:
 
         try:
@@ -54,8 +108,7 @@ class BrainManager:
             ]
 
             if vision_data:
-                texts = [t.get("text", "")
-                         for t in vision_data.get("texts", [])][:20]
+                texts = [t.get("text", "") for t in vision_data.get("texts", [])][:20]
                 ui = vision_data.get("ui_elements", [])[:15]
 
                 system_parts.append(
@@ -69,24 +122,15 @@ class BrainManager:
             if context:
                 system_parts.append(f"\nAdditional context:\n{context}")
 
-            messages = [{
-                "role": "system",
-                "content": "\n".join(system_parts)
-            }]
+            messages = [{"role": "system", "content": "\n".join(system_parts)}]
 
             # ── History inject karo (last 10 turns) ───────
             if conversation_history:
                 for role, text in conversation_history[-10:]:
-                    messages.append({
-                        "role": role,
-                        "content": str(text)
-                    })
+                    messages.append({"role": role, "content": str(text)})
 
             # ── Current message ────────────────────────────
-            messages.append({
-                "role": "user",
-                "content": str(message)
-            })
+            messages.append({"role": "user", "content": str(message)})
 
             response = requests.post(
                 self.url,
@@ -94,15 +138,15 @@ class BrainManager:
                     "Authorization": f"Bearer {self.api_key}",
                     "HTTP-Referer": "http://localhost",
                     "X-Title": "Omnix AI Assistant",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
                 json={
                     "model": self.model,
                     "messages": messages,
                     "max_tokens": 800,
-                    "temperature": 0.3
+                    "temperature": 0.3,
                 },
-                timeout=30
+                timeout=30,
             )
 
             try:
@@ -138,7 +182,9 @@ class BrainManager:
 
         logger.info("AI Brain generating execution plan")
 
-        screen_part = f"\nCurrent screen state:\n{screen_summary}" if screen_summary else ""
+        screen_part = (
+            f"\nCurrent screen state:\n{screen_summary}" if screen_summary else ""
+        )
 
         system_prompt = f"""You are the brain of an AI computer assistant called Omnix.
 
@@ -174,12 +220,13 @@ Example:
 
         try:
             import json
+
             response = response.strip().replace("```json", "").replace("```", "")
             start = response.find("[")
             end = response.rfind("]")
             if start == -1 or end == -1:
                 return None
-            return json.loads(response[start:end + 1])
+            return json.loads(response[start : end + 1])
         except Exception:
             logger.error("Failed to parse AI plan")
             return None

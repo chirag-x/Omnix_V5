@@ -37,13 +37,19 @@ class BrowserSkill(BaseSkill, ABC):
     async def ensure_browser(
         self,
         context: SkillContext,
+        browser: str | None = None,
     ):
         """
         Ensure a browser session exists.
         """
 
-        if not await context.browser.is_running():
-            await context.browser.launch(browser=self.browser_name)
+        if context.browser is None:
+            raise RuntimeError("Browser service is unavailable.")
+
+        browser = browser or self.browser_name
+
+        if not await context.browser.is_running(browser):
+            await context.browser.launch(browser=browser)
 
     async def open_url(
         self,

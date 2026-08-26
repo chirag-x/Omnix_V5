@@ -19,6 +19,7 @@ from loguru import logger
 
 from skills.core.base_skill import BaseSkill
 from skills.manager.skill_registry import SkillRegistry
+from skills.manager.skill_validator import SkillValidator
 
 
 class SkillLoader:
@@ -38,6 +39,7 @@ class SkillLoader:
     ):
 
         self.registry = registry
+        self.validator = SkillValidator()
 
         self.loaded_skills = []
 
@@ -48,10 +50,6 @@ class SkillLoader:
     # --------------------------------------------------
 
     def load_all(self) -> None:
-
-        print("=" * 60)
-        print("LOAD_ALL EXECUTED")
-        print("=" * 60)
 
         logger.info("[SkillLoader] Discovering skills...")
 
@@ -107,6 +105,7 @@ class SkillLoader:
 
             for skill in self._find_skills(module):
 
+                self.validator.validate(skill)
                 self.registry.register(skill)
                 logger.success(f"[SkillLoader] Registered: {skill.metadata.id}")
 

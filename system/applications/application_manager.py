@@ -353,6 +353,20 @@ class ApplicationManager:
 
         application = self.find(name)
 
+        logger.info("=" * 60)
+        logger.info("[ApplicationManager] Launch Request")
+        logger.info(f"Requested name      : {name}")
+
+        if application:
+            logger.info(f"Display Name        : {application.display_name}")
+            logger.info(f"Executable          : {application.executable}")
+            logger.info(f"Launch Command      : {application.launch_command}")
+            logger.info(f"Install Path        : {application.install_path}")
+        else:
+            logger.error("Application lookup returned None")
+
+        logger.info("=" * 60)
+
         if application is None:
 
             logger.warning(
@@ -362,6 +376,7 @@ class ApplicationManager:
 
             return False
 
+        logger.info("[ApplicationManager] Calling LaunchStrategy.launch()")
         success = self._launcher.launch(
             application,
             *arguments,

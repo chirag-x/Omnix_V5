@@ -47,6 +47,9 @@ class BrowserActionSkill(BrowserSkill):
 
             return SkillResult.failure(message="No browser action specified.")
 
+        if context.browser is None:
+            return SkillResult.failure(message="Browser service is unavailable.")
+
         action = action.lower()
 
         handlers: dict[
@@ -56,6 +59,14 @@ class BrowserActionSkill(BrowserSkill):
                 Awaitable[bool],
             ],
         ] = {
+            "open": self._open,
+            "open_browser": self._open,
+            "focus": self._focus,
+            "focus_browser": self._focus,
+            "search": self._search,
+            "open_url": self._open_url,
+            "navigate": self._open_url,
+            "go_to": self._open_url,
             "refresh": self._refresh,
             "back": self._back,
             "forward": self._forward,
@@ -91,40 +102,86 @@ class BrowserActionSkill(BrowserSkill):
         self,
         context: SkillContext,
     ):
-        await context.browser.refresh()
+        return await context.browser.refresh()
+
+    async def _open(
+        self,
+        context: SkillContext,
+    ):
+        browser = context.entity("browser") or self.browser_name
+
+        if not await context.browser.is_running(browser):
+            return await context.browser.launch(browser=browser)
+
+        return await context.browser.focus(browser=browser)
+
+    async def _focus(
+        self,
+        context: SkillContext,
+    ):
+        browser = context.entity("browser") or self.browser_name
+        return await context.browser.focus(browser=browser)
+
+    async def _search(
+        self,
+        context: SkillContext,
+    ):
+        query = context.entity("query") or context.parameter("text")
+
+        if not query:
+            return False
+
+        browser = context.entity("browser") or self.browser_name
+        return await context.browser.search(query=query, browser=browser)
+
+    async def _open_url(
+        self,
+        context: SkillContext,
+    ):
+        url = context.entity("url") or context.parameter("target")
+
+        if not url:
+            return False
+
+        browser = context.entity("browser") or self.browser_name
+
+        try:
+            return await context.browser.open_url(url=url, browser=browser)
+        except TypeError:
+            return await context.browser.open_url(url)
 
     async def _back(
         self,
         context: SkillContext,
     ):
-        await context.browser.back()
+        return await context.browser.back()
 
     async def _forward(
         self,
         context: SkillContext,
     ):
-        await context.browser.forward()
+        return await context.browser.forward()
 
     async def _new_tab(
         self,
         context: SkillContext,
     ):
-        await context.browser.new_tab()
+        return await context.browser.new_tab()
 
     async def _close_tab(
         self,
         context: SkillContext,
     ):
-        await context.browser.close_tab()
+        return await context.browser.close_tab()
 
     async def _scroll_up(
         self,
         context: SkillContext,
     ):
-        await context.browser.scroll(direction="up")
+        return await context.browser.scroll(direction="up")
 
     async def _scroll_down(
         self,
         context: SkillContext,
     ):
-        await context.browser.scroll(direction="down")
+        return await context.browser.scroll(direction="down")

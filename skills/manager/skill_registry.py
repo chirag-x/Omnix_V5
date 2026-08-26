@@ -36,6 +36,8 @@ class SkillRegistry:
 
         self._skills: dict[str, Type[BaseSkill]] = {}
 
+        self._names: dict[str, str] = {}
+
         self._aliases: dict[str, str] = {}
 
         self._categories: defaultdict[str, set[str]] = defaultdict(set)
@@ -61,6 +63,7 @@ class SkillRegistry:
             )
 
         self._skills[skill_id] = skill_cls
+        self._names[metadata.name.lower()] = skill_id
 
         for alias in metadata.aliases:
             self._aliases[alias.lower()] = skill_id
@@ -102,6 +105,11 @@ class SkillRegistry:
 
         if name in self._skills:
             return self._skills[name]
+
+        if name in self._names:
+            return self._skills[
+                self._names[name]
+            ]
 
         if name in self._aliases:
             return self._skills[
@@ -169,6 +177,11 @@ class SkillRegistry:
 
         del self._skills[skill_id]
 
+        self._names.pop(
+            metadata.name.lower(),
+            None,
+        )
+
         for alias in metadata.aliases:
             self._aliases.pop(
                 alias.lower(),
@@ -190,6 +203,12 @@ class SkillRegistry:
             self._skills.values()
         )
 
+    def ids(self) -> list[str]:
+
+        return list(
+            self._skills.keys()
+        )
+
     def count(self):
 
         return len(self._skills)
@@ -197,6 +216,8 @@ class SkillRegistry:
     def clear(self):
 
         self._skills.clear()
+
+        self._names.clear()
 
         self._aliases.clear()
 

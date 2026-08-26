@@ -555,7 +555,8 @@ class BaseSkill(ABC):
 
             result = self.failure(
                 message=str(error),
-                error=error,
+                error=str(error),
+                exception=error,
             )
 
         # ------------------------------------------
